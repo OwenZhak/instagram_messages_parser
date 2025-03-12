@@ -1,19 +1,41 @@
 import json
 import tkinter as tk
 from tkinter import filedialog, ttk
+import os
+import ctypes
 from datetime import datetime
+import re
+
+# Enable DPI awareness for better text rendering on Windows
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except:
+    pass
 
 def decode_content(text):
-    """Decode Unicode escape sequences to readable Russian text."""
+    """Decode Unicode escape sequences to readable Russian text and emojis."""
     if not isinstance(text, str):
         return text
     
     try:
-        # Direct conversion approach for Instagram's encoding pattern
-        return bytes(text, 'latin1').decode('utf-8')
+        # Special handling for emojis and Russian text in Instagram format
+        # Step 1: Handle standard Instagram encoding
+        decoded = bytes(text, 'latin1').decode('utf-8')
+        
+        return decoded
+    
     except Exception as e:
-        print(f"Error decoding '{text}': {e}")
-        return text
+        print(f"Primary decoding failed: {e}")
+        # Alternative approaches
+        try:
+            # Try another common encoding pattern for emojis
+            return bytes(text.encode('latin1')).decode('utf-8')
+        except:
+            try:
+                # Last resort direct Unicode escape decoding
+                return text.encode('ascii').decode('unicode_escape')
+            except:
+                return text
 
 def parse_instagram_json(file_path):
     """Parse Instagram JSON file and extract messages with decoded content."""
@@ -62,7 +84,10 @@ class InstagramMessageViewer:
     def __init__(self, root):
         self.root = root
         self.root.title("Instagram Message Viewer")
-        self.root.geometry("900x700")
+        self.root.geometry("1000x800")  # Larger default size
+        
+        # Set font scaling for better readability
+        default_font = ('Segoe UI', 11)  # Use a font that supports emojis well
         
         # Create main frame
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -79,7 +104,7 @@ class InstagramMessageViewer:
         )
         self.select_button.pack(side=tk.LEFT, padx=5)
         
-        self.files_label = ttk.Label(self.control_frame, text="No files selected")
+        self.files_label = ttk.Label(self.control_frame, text="No files selected", font=default_font)
         self.files_label.pack(side=tk.LEFT, padx=5)
         
         # Message display area with scrollbar
@@ -93,18 +118,20 @@ class InstagramMessageViewer:
             self.message_frame, 
             wrap=tk.WORD, 
             yscrollcommand=self.scrollbar.set,
-            font=("Arial", 10)
+            font=default_font
         )
         self.message_text.pack(fill=tk.BOTH, expand=True)
         self.scrollbar.config(command=self.message_text.yview)
         
         # Configure text styles
-        self.message_text.tag_configure("header", font=("Arial", 12, "bold"))
-        self.message_text.tag_configure("subheader", font=("Arial", 11, "bold"))
-        self.message_text.tag_configure("info", font=("Arial", 10))
-        self.message_text.tag_configure("sender_a", font=("Arial", 10, "bold"), foreground="blue")
-        self.message_text.tag_configure("sender_b", font=("Arial", 10, "bold"), foreground="green")  
-        self.message_text.tag_configure("time", font=("Arial", 8), foreground="gray")
+        self.message_text.tag_configure("header", font=('Segoe UI', 14, "bold"))
+        self.message_text.tag_configure("subheader", font=('Segoe UI', 12, "bold"))
+        self.message_text.tag_configure("info", font=default_font)
+        self.message_text.tag_configure("time", font=('Segoe UI', 9), foreground="#757575")
+        
+        # The sender tags will be created dynamically based on participants found
+        self.sender_colors = ["#1E88E5", "#43A047", "#FB8C00", "#E53935", "#8E24AA", "#00ACC1"]
+        self.sender_tags = {}  # Will map sender names to tag names
         
         self.selected_files = []
         
@@ -149,6 +176,16 @@ class InstagramMessageViewer:
             file_name = os.path.basename(file_path)
             file_info.append(f"{file_name}: {len(messages)} messages")
         
+        # Create sender tags dynamically based on participants found
+        self.sender_tags = {}
+        for i, participant in enumerate(sorted(all_participants)):
+            color_index = i % len(self.sender_colors)
+            tag_name = f"sender_{i}"
+            self.sender_tags[participant] = tag_name
+            self.message_text.tag_configure(tag_name, 
+                                          font=('Segoe UI', 11, "bold"), 
+                                          foreground=self.sender_colors[color_index])
+        
         # Display chat summary information
         self.message_text.insert(tk.END, "CHAT INFORMATION\n", "header")
         self.message_text.insert(tk.END, "----------------\n\n", "header")
@@ -156,7 +193,8 @@ class InstagramMessageViewer:
         # Show participants
         self.message_text.insert(tk.END, "Chat Participants:\n", "subheader")
         for participant in sorted(all_participants):
-            self.message_text.insert(tk.END, f"• {participant}\n", "info")
+            tag = self.sender_tags[participant]
+            self.message_text.insert(tk.END, f"• {participant}\n", tag)
         self.message_text.insert(tk.END, "\n")
         
         # Show files processed
@@ -179,7 +217,7 @@ class InstagramMessageViewer:
         self.message_text.insert(tk.END, f"• Total messages: {len(all_messages)}\n", "info")
         for sender, count in sender_counts.items():
             percentage = (count / len(all_messages)) * 100 if all_messages else 0
-            tag = "sender_a" if sender == "alyona" else "sender_b"
+            tag = self.sender_tags.get(sender, "info")
             self.message_text.insert(tk.END, f"• {sender}: {count} messages ({percentage:.1f}%)\n", tag)
         
         self.message_text.insert(tk.END, "\n\n")
@@ -196,10 +234,10 @@ class InstagramMessageViewer:
             timestamp = self.format_timestamp(message.get('timestamp', 0))
             self.message_text.insert(tk.END, f"[{timestamp}] ", "time")
             
-            # Use different colors for different senders
+            # Use different colors for different senders dynamically
             sender = message['sender_name']
-            tag = "sender_a" if sender == "alyona" else "sender_b"
-            self.message_text.insert(tk.END, f"{sender} --- ", tag)
+            tag = self.sender_tags.get(sender, "info")
+            self.message_text.insert(tk.END, f"{sender}    ------   ", tag)
             
             self.message_text.insert(tk.END, f"{message['content']}\n\n")
 
