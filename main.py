@@ -160,6 +160,9 @@ class InstagramMessageViewer:
         """Display messages from selected JSON files."""
         self.message_text.delete(1.0, tk.END)
         
+        # Configure tab stops for consistent alignment
+        self.message_text.config(tabs=("4c", "8c"))  # Set tab stops at 4cm and 8cm
+        
         all_messages = []
         all_participants = set()
         file_info = []
@@ -204,21 +207,29 @@ class InstagramMessageViewer:
                 self.message_text.insert(tk.END, f"• {info}\n", "info")
             self.message_text.insert(tk.END, "\n")
         
-        # Count messages by sender
+        # Count messages and characters by sender
         sender_counts = {}
+        sender_chars = {}
         for message in all_messages:
             sender = message['sender_name']
+            content = message['content']
+            
+            # Count messages
             if sender not in sender_counts:
                 sender_counts[sender] = 0
+                sender_chars[sender] = 0
+            
             sender_counts[sender] += 1
+            sender_chars[sender] += len(content) if content else 0
         
         # Show message statistics
         self.message_text.insert(tk.END, "Message Statistics:\n", "subheader")
         self.message_text.insert(tk.END, f"• Total messages: {len(all_messages)}\n", "info")
         for sender, count in sender_counts.items():
-            percentage = (count / len(all_messages)) * 100 if all_messages else 0
+            msg_percentage = (count / len(all_messages)) * 100 if all_messages else 0
+            char_count = sender_chars[sender]
             tag = self.sender_tags.get(sender, "info")
-            self.message_text.insert(tk.END, f"• {sender}: {count} messages ({percentage:.1f}%)\n", tag)
+            self.message_text.insert(tk.END, f"• {sender}: {count} messages ({msg_percentage:.1f}%), {char_count} characters\n", tag)
         
         self.message_text.insert(tk.END, "\n\n")
         
@@ -229,16 +240,22 @@ class InstagramMessageViewer:
         # Sort messages by timestamp (newest first)
         all_messages.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
         
+        # Find maximum sender name length for alignment
+        max_sender_length = max([len(message['sender_name']) for message in all_messages]) if all_messages else 0
+        
         # Display all messages in chronological order
         for message in all_messages:
             timestamp = self.format_timestamp(message.get('timestamp', 0))
-            self.message_text.insert(tk.END, f"[{timestamp}] ", "time")
+            self.message_text.insert(tk.END, f"[{timestamp}]\t", "time")
             
             # Use different colors for different senders dynamically
             sender = message['sender_name']
             tag = self.sender_tags.get(sender, "info")
-            self.message_text.insert(tk.END, f"{sender}    ------   ", tag)
             
+            # Use tab for alignment instead of calculating spaces
+            self.message_text.insert(tk.END, f"{sender}:\t", tag)
+            
+            # Insert content after the tab stop
             self.message_text.insert(tk.END, f"{message['content']}\n\n")
 
 def main():
