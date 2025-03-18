@@ -1,78 +1,17 @@
-import json
 import tkinter as tk
 from tkinter import filedialog, ttk
 import os
 import ctypes
-from datetime import datetime
 import re
+
+# Import from our custom module
+from instagram_message_parser import parse_instagram_json, MessageAnalyzer
 
 # Enable DPI awareness for better text rendering on Windows
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except:
     pass
-
-def decode_content(text):
-    """Decode Unicode escape sequences to readable Russian text and emojis."""
-    if not isinstance(text, str):
-        return text
-    
-    try:
-        # Special handling for emojis and Russian text in Instagram format
-        # Step 1: Handle standard Instagram encoding
-        decoded = bytes(text, 'latin1').decode('utf-8')
-        
-        return decoded
-    
-    except Exception as e:
-        print(f"Primary decoding failed: {e}")
-        # Alternative approaches
-        try:
-            # Try another common encoding pattern for emojis
-            return bytes(text.encode('latin1')).decode('utf-8')
-        except:
-            try:
-                # Last resort direct Unicode escape decoding
-                return text.encode('ascii').decode('unicode_escape')
-            except:
-                return text
-
-def parse_instagram_json(file_path):
-    """Parse Instagram JSON file and extract messages with decoded content."""
-    try:
-        with open(file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        
-        messages = []
-        participants = [p.get('name', '') for p in data.get('participants', [])]
-        print(f"Participants in chat: {participants}")
-        
-        for message in data.get('messages', []):
-            sender = message.get('sender_name', '')
-            
-            # Handle regular messages with content
-            if 'content' in message:
-                content = message.get('content', '')
-                # Skip reaction messages, likes, and edited messages
-                if (content != "Liked a message" and 
-                    not content.startswith("Reacted") and 
-                    not content.startswith("Liked") and
-                    "edited" not in content and
-                    "to your message" not in content):
-                        decoded_content = decode_content(content)
-                        timestamp = message.get('timestamp_ms', 0)
-                        
-                        messages.append({
-                            'sender_name': sender,
-                            'content': decoded_content,
-                            'timestamp': timestamp
-                        })
-        
-        print(f"Parsed {len(messages)} messages from file")
-        return {"messages": messages, "participants": participants}
-    except Exception as e:
-        print(f"Error parsing file {file_path}: {e}")
-        return {"messages": [], "participants": []}
 
 class InstagramMessageViewer:
     def __init__(self, root):
@@ -182,13 +121,6 @@ class InstagramMessageViewer:
         self.files_label.config(text=f"{len(self.selected_files)} files selected")
         self.display_messages()
     
-    def format_timestamp(self, timestamp_ms):
-        """Convert millisecond timestamp to readable date format."""
-        if not timestamp_ms:
-            return ""
-        timestamp = datetime.fromtimestamp(timestamp_ms / 1000)
-        return timestamp.strftime("%Y-%m-%d %H:%M:%S")
-    
     def display_messages(self):
         """Display messages from selected JSON files."""
         # Clear all text widgets
@@ -242,36 +174,21 @@ class InstagramMessageViewer:
                 self.stats_text.insert(tk.END, f"• {info}\n", "info")
             self.stats_text.insert(tk.END, "\n")
         
-        # Count messages and characters by sender
-        sender_counts = {}
-        sender_chars = {}
-        for message in all_messages:
-            sender = message['sender_name']
-            content = message['content']
-            
-            # Count messages
-            if sender not in sender_counts:
-                sender_counts[sender] = 0
-                sender_chars[sender] = 0
-            
-            sender_counts[sender] += 1
-            sender_chars[sender] += len(content) if content else 0
+        # Get message statistics using MessageAnalyzer
+        stats = MessageAnalyzer.calculate_stats(all_messages)
         
         # Show message statistics
         self.stats_text.insert(tk.END, "Message Statistics:\n", "subheader")
-        self.stats_text.insert(tk.END, f"• Total messages: {len(all_messages)}\n", "info")
-        for sender, count in sender_counts.items():
-            msg_percentage = (count / len(all_messages)) * 100 if all_messages else 0
-            char_count = sender_chars[sender]
+        self.stats_text.insert(tk.END, f"• Total messages: {stats['total_messages']}\n", "info")
+        for sender, count in stats['sender_counts'].items():
+            msg_percentage = (count / stats['total_messages']) * 100 if stats['total_messages'] else 0
+            char_count = stats['sender_chars'][sender]
             tag = self.sender_tags.get(sender, "info")
             self.stats_text.insert(tk.END, f"• {sender}: {count} messages ({msg_percentage:.1f}%), {char_count} characters\n", tag)
         
         # --- LONGEST MESSAGES TAB ---
-        # Find 20 longest messages
-        valid_messages = [msg for msg in all_messages if msg.get('content')]
-        longest_messages = sorted(valid_messages, 
-                                key=lambda x: len(x['content']), 
-                                reverse=True)[:20]
+        # Find 20 longest messages using MessageAnalyzer
+        longest_messages = MessageAnalyzer.find_longest_messages(all_messages, 20)
         
         self.longest_text.insert(tk.END, "20 LONGEST MESSAGES\n", "header")
         self.longest_text.insert(tk.END, "-------------------\n\n", "header")
@@ -280,7 +197,7 @@ class InstagramMessageViewer:
         for i, message in enumerate(longest_messages, 1):
             sender = message['sender_name']
             content = message['content']
-            timestamp = self.format_timestamp(message.get('timestamp', 0))
+            timestamp = MessageAnalyzer.format_timestamp(message.get('timestamp', 0))
             char_count = len(content)
             
             # Get sender tag for colorization
@@ -302,12 +219,12 @@ class InstagramMessageViewer:
         self.messages_text.insert(tk.END, "MESSAGES (Chronological Order)\n", "header")
         self.messages_text.insert(tk.END, "------------------------------\n\n", "header")
         
-        # Sort messages by timestamp (newest first)
-        all_messages.sort(key=lambda x: x.get('timestamp', 0), reverse=True)
+        # Sort messages by timestamp (newest first) using MessageAnalyzer
+        sorted_messages = MessageAnalyzer.sort_by_timestamp(all_messages, reverse=True)
         
         # Display all messages in chronological order
-        for message in all_messages:
-            timestamp = self.format_timestamp(message.get('timestamp', 0))
+        for message in sorted_messages:
+            timestamp = MessageAnalyzer.format_timestamp(message.get('timestamp', 0))
             self.messages_text.insert(tk.END, f"[{timestamp}]\t", "time")
             
             # Use different colors for different senders dynamically
