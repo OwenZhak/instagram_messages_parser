@@ -186,6 +186,28 @@ class InstagramMessageViewer:
             tag = self.sender_tags.get(sender, "info")
             self.stats_text.insert(tk.END, f"• {sender}: {count} messages ({msg_percentage:.1f}%), {char_count} characters\n", tag)
         
+        # Add word usage statistics
+        self.stats_text.insert(tk.END, "\nMost Common Words by Participant:\n", "subheader")
+        
+        # Get word usage analysis using MessageAnalyzer
+        word_usage = MessageAnalyzer.analyze_word_usage_by_sender(all_messages, top_n=50, min_length=1)
+        
+        # Display word usage for each sender
+        for sender, words in word_usage.items():
+            tag = self.sender_tags.get(sender, "info")
+            
+            # Display sender name with their color
+            self.stats_text.insert(tk.END, f"\n• {sender}'s most used words:\n", tag)
+            
+            # Skip if no words found
+            if not words:
+                self.stats_text.insert(tk.END, "  (No significant words found)\n", "info")
+                continue
+                
+            # Display the words and counts
+            word_list = ', '.join([f"{word} ({count})" for word, count in words])
+            self.stats_text.insert(tk.END, f"  {word_list}\n", "info")
+        
         # --- LONGEST MESSAGES TAB ---
         # Find 20 longest messages using MessageAnalyzer
         longest_messages = MessageAnalyzer.find_longest_messages(all_messages, 20)
