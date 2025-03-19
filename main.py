@@ -99,6 +99,7 @@ class InstagramMessageViewer:
             text_widget.tag_configure("subheader", font=('Segoe UI', 12, "bold"))
             text_widget.tag_configure("info", font=default_font)
             text_widget.tag_configure("time", font=('Segoe UI', 9), foreground="#757575")
+            text_widget.tag_configure("media", font=('Segoe UI', 10, "italic"), foreground="#9C27B0")  # Purple italic for media
             text_widget.config(tabs=("4c", "10c"))  # Set tab stops at 4cm and 10cm
         
         # The sender tags will be created dynamically based on participants found
@@ -187,17 +188,22 @@ class InstagramMessageViewer:
             self.stats_text.insert(tk.END, f"• {sender}: {count} messages ({msg_percentage:.1f}%), {char_count} characters\n", tag)
         
         # Add word usage statistics
-        self.stats_text.insert(tk.END, "\nMost Common Words by Participant:\n", "subheader")
-        
-        # Get word usage analysis using MessageAnalyzer
+        self.stats_text.insert(tk.END, "\nWORD USAGE ANALYSIS\n", "header")
+        self.stats_text.insert(tk.END, "-------------------\n\n", "header")
+
+        # --- PER PARTICIPANT ANALYSIS ---
+        # Top words per participant (all words)
+        self.stats_text.insert(tk.END, "Most Common Words by Participant:\n", "subheader")
+
+        # Get word usage analysis (min length 1)
         word_usage = MessageAnalyzer.analyze_word_usage_by_sender(all_messages, top_n=50, min_length=1)
-        
+
         # Display word usage for each sender
         for sender, words in word_usage.items():
             tag = self.sender_tags.get(sender, "info")
             
             # Display sender name with their color
-            self.stats_text.insert(tk.END, f"\n• {sender}'s most used words:\n", tag)
+            self.stats_text.insert(tk.END, f"\n• {sender}'s most used words (all lengths):\n", tag)
             
             # Skip if no words found
             if not words:
@@ -207,6 +213,47 @@ class InstagramMessageViewer:
             # Display the words and counts
             word_list = ', '.join([f"{word} ({count})" for word, count in words])
             self.stats_text.insert(tk.END, f"  {word_list}\n", "info")
+
+        # Longer words per participant (min length 4)
+        self.stats_text.insert(tk.END, "\n")
+        word_usage_longer = MessageAnalyzer.analyze_word_usage_by_sender(all_messages, top_n=30, min_length=4)
+
+        # Display longer word usage for each sender
+        for sender, words in word_usage_longer.items():
+            tag = self.sender_tags.get(sender, "info")
+            
+            # Display sender name with their color
+            self.stats_text.insert(tk.END, f"\n• {sender}'s most used words (4+ characters):\n", tag)
+            
+            # Skip if no words found
+            if not words:
+                self.stats_text.insert(tk.END, "  (No significant words found)\n", "info")
+                continue
+                
+            # Display the words and counts
+            word_list = ', '.join([f"{word} ({count})" for word, count in words])
+            self.stats_text.insert(tk.END, f"  {word_list}\n", "info")
+
+        # --- OVERALL CHAT ANALYSIS ---
+        self.stats_text.insert(tk.END, "\nMost Common Words Overall:\n", "subheader")
+
+        # All words (min length 1)
+        all_words_short = MessageAnalyzer.find_most_common_words(all_messages, sender=None, top_n=50, min_length=1)
+        if all_words_short:
+            self.stats_text.insert(tk.END, "• Overall most used words (all lengths):\n", "subheader")
+            word_list = ', '.join([f"{word} ({count})" for word, count in all_words_short])
+            self.stats_text.insert(tk.END, f"  {word_list}\n\n", "info")
+        else:
+            self.stats_text.insert(tk.END, "  (No words found)\n\n", "info")
+
+        # Longer words (min length 4)
+        all_words_long = MessageAnalyzer.find_most_common_words(all_messages, sender=None, top_n=50, min_length=4)
+        if all_words_long:
+            self.stats_text.insert(tk.END, "• Overall most used words (4+ characters):\n", "subheader")
+            word_list = ', '.join([f"{word} ({count})" for word, count in all_words_long])
+            self.stats_text.insert(tk.END, f"  {word_list}\n", "info")
+        else:
+            self.stats_text.insert(tk.END, "  (No words found)\n", "info")
         
         # --- LONGEST MESSAGES TAB ---
         # Find 20 longest messages using MessageAnalyzer
@@ -256,8 +303,14 @@ class InstagramMessageViewer:
             # Use tab for alignment
             self.messages_text.insert(tk.END, f"{sender}:\t", tag)
             
-            # Insert content after the tab stop
-            self.messages_text.insert(tk.END, f"{message['content']}\n\n")
+            # Insert content after the tab stop, handling empty messages
+            content = message.get('content', '')
+            
+            # For special message types, use a distinct style
+            if content in ["[Photo]", "[Video]", "[GIF]", "[File]", "[Audio]", "[Empty message]"]:
+                self.messages_text.insert(tk.END, f"{content}\n\n", "media")
+            else:
+                self.messages_text.insert(tk.END, f"{content}\n\n")
 
 def main():
     root = tk.Tk()

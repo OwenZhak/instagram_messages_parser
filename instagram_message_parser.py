@@ -37,22 +37,65 @@ def parse_instagram_json(file_path):
     
     for msg in data.get('messages', []):
         sender = msg.get('sender_name', '')
-        content = msg.get('content', '')
         
-        # Filter out likes, reactions, edited messages, etc.
-        if (
-            content != "Liked a message"
-            and not content.startswith("Reacted")
-            and not content.startswith("Liked")
-            and "edited" not in content
-            and "to your message" not in content
-        ):
-            decoded = decode_content(content)
-            timestamp = msg.get('timestamp_ms', 0)
+        # Check for content or media/attachments
+        has_content = 'content' in msg and msg.get('content')
+        has_photos = 'photos' in msg and msg.get('photos')
+        has_videos = 'videos' in msg and msg.get('videos')
+        has_gifs = 'gifs' in msg and msg.get('gifs')
+        has_files = 'files' in msg and msg.get('files')
+        has_audio = 'audio_files' in msg and msg.get('audio_files')
+        has_share = 'share' in msg and msg.get('share')
+        
+        # Process messages with content
+        if has_content:
+            content = msg.get('content', '')
+            # Skip reaction messages, likes, and edited messages
+            if (content != "Liked a message" and 
+                not content.startswith("Reacted") and 
+                not content.startswith("Liked") and
+                "edited" not in content and
+                "to your message" not in content):
+                decoded_content = decode_content(content)
+                timestamp = msg.get('timestamp_ms', 0)
+                
+                all_messages.append({
+                    'sender_name': sender,
+                    'content': decoded_content,
+                    'timestamp': timestamp
+                })
+        
+        # Process "blank" messages with media
+        elif has_photos or has_videos or has_gifs or has_files or has_audio or has_share:
+            # Determine the type of media
+            media_type = ""
+            if has_photos:
+                media_type = "[Photo]"
+            elif has_videos:
+                media_type = "[Video]"
+            elif has_gifs:
+                media_type = "[GIF]"
+            elif has_files:
+                media_type = "[File]"
+            elif has_audio:
+                media_type = "[Audio]"
+            elif has_share:
+                link = msg.get('share', {}).get('link', '')
+                media_type = f"[Shared: {link}]"
             
+            timestamp = msg.get('timestamp_ms', 0)
             all_messages.append({
                 'sender_name': sender,
-                'content': decoded,
+                'content': media_type,
+                'timestamp': timestamp
+            })
+        
+        # Include truly blank messages with a placeholder
+        else:
+            timestamp = msg.get('timestamp_ms', 0)
+            all_messages.append({
+                'sender_name': sender,
+                'content': "[Empty message]",
                 'timestamp': timestamp
             })
     
